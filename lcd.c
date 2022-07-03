@@ -11,8 +11,9 @@
 #include "gpio.h"
 #include "avr/delay.h"
 
-#define LCD_FALSE				0
-#define LCD_TRUE				1
+#define LCD_FALSE								0
+#define LCD_TRUE								1
+#define ASCII_VALUE_TO_CONVERT_INT_TO_CHAR		0x30	/*The ASCII Representation of numbers start from their numeric value + This value. Example: 0 (Char) = 0 (Digit) + 0x30 (Digit to char offset in ASCII Table)*/
 
 
 static uint8_type guint8_is_lcd_initialized = LCD_FALSE;
@@ -246,7 +247,11 @@ sint32_type lcd_write_one_byte(enu_lcd_byte_operation_type enu_lcd_operation, ui
 */
 sint32_type lcd_write_integral_data(enu_integral_operation_type enu_integral_operation, sint32_type sint32_integral_data)
 {
-	sint32_type sint32_retval = SUCCESS_RETVAL;
+	sint32_type sint32_retval                   = SUCCESS_RETVAL;
+	sint32_type sint32_temp_integral_value_1    = sint32_integral_data;
+	sint32_type sint32_temp_integral_value_2    = sint32_integral_data;
+	uint8_type  uint8_number_of_digits          = 0;
+	uint8_type  uint8_number_index_in_array     = 0;
 	if(guint8_is_lcd_initialized == LCD_TRUE)
 	{
 		if(enu_integral_operation < LCD_INTEGRAL_TOTAL)
@@ -255,49 +260,44 @@ sint32_type lcd_write_integral_data(enu_integral_operation_type enu_integral_ope
 			{
 				case LCD_INTEGRAL_DECIMAL:
 				{
-					uint32_type 	uint32_reversed_num = 0;
-					uint8_type 		uint8_displayed_num = 0;
-					uint32_type 	uint32_multiplier = 1;
-					uint32_type 	uint32_iterator = 0;
 					if(sint32_integral_data == 0)
 					{
 						sint32_retval = lcd_write_one_byte(LCD_CHARACTER_DATA, '0');
-						if(sint32_retval != SUCCESS_RETVAL)
-						{
-							/*MR_TODO: Remove This after testing the driver. And Replace it with break*/
-						}
+						return sint32_retval;
 					}
-					else if(sint32_integral_data < 0)
+					if(sint32_integral_data < 0)
 					{
 						sint32_retval = lcd_write_one_byte(LCD_CHARACTER_DATA, '-');
-						if(sint32_retval != SUCCESS_RETVAL)
-						{
-							/*MR_TODO: Remove This after testing the driver. And Replace it with break*/
-						}
-						sint32_integral_data *= -1;
+						sint32_temp_integral_value_1 = sint32_integral_data * -1;
+						sint32_temp_integral_value_2 = sint32_integral_data * -1;
 					}
-					
-					while (sint32_integral_data != 0)
+
+					/*Calculate the number of Digits to write*/
+
+					while(sint32_temp_integral_value_1 > 0)
 					{
-						uint32_reversed_num = (uint32_reversed_num * 10) + sint32_integral_data % 10;
-						if (uint32_reversed_num == 0)	
-						uint32_multiplier *= 10;
-						sint32_integral_data /= 10;
-					}	
-					while (uint32_reversed_num != uint32_iterator)
+						uint8_number_of_digits++;
+						sint32_temp_integral_value_1 /= 10;
+					}
+
+					/*Create an Array with the total number of digits inside the +ve value of sint32_integral_data*/
+					uint8_type  arr_uint8_digits_to_write[uint8_number_of_digits];
+
+					while(sint32_temp_integral_value_2 > 0)
 					{
-						uint8_displayed_num = uint32_reversed_num % 10;
-						sint32_retval = lcd_write_one_byte(LCD_CHARACTER_DATA, (uint8_displayed_num + 0x30));
-						if(sint32_retval != SUCCESS_RETVAL)
+						/*Storing the values of the least significant digit in the sint32_temp_integral_value_2 at the array starting from 0 index*/
+						arr_uint8_digits_to_write[uint8_number_index_in_array++] = sint32_temp_integral_value_2 % 10;
+
+						sint32_temp_integral_value_2 = sint32_temp_integral_value_2 / 10;
+					}
+
+					for(uint8_number_index_in_array = uint8_number_of_digits-1; uint8_number_index_in_array >= 0; uint8_number_index_in_array--)
+					{
+						sint32_retval = lcd_write_one_byte(LCD_CHARACTER_DATA, arr_uint8_digits_to_write[uint8_number_index_in_array] + ASCII_VALUE_TO_CONVERT_INT_TO_CHAR);
+						if(uint8_number_index_in_array == 0)
 						{
-							/*MR_TODO: Remove This after testing the driver. And Replace it with break*/
+							break;
 						}
-						uint32_reversed_num/=10;
-						if ((uint32_reversed_num == 0) && (uint32_multiplier >= 10))
-						{
-							uint32_iterator = 1;
-							uint32_reversed_num = uint32_multiplier;
-						}	
 					}
 					break;
 				}
