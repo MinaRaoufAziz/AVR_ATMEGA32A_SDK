@@ -11,7 +11,7 @@
 #include "atmega32a_register_file.h"
 
 #ifndef F_CPU
-#define F_CPU	16000000
+#define F_CPU	16000000UL
 #endif
 
 /**
