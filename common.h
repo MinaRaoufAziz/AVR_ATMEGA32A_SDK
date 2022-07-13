@@ -4,14 +4,16 @@
 #define __COMMON_H__
 
 #include "types.h"
+#include "debug.h"
 
 /**
-*@brief:
-*/
-#define BREAK_ON_ERROR(VAR)             if(VAR != SUCCESS_RETVAL)    \
-                                        {                           \
-                                            /*Todo: Add the compiler line here*/	\
-                                            break;                  \
+ * @brief: Macro that is used to break on Error and Display the Error Line And The Function that captured the error.
+ * 
+ */
+#define BREAK_ON_ERROR(VAR)             if(VAR != SUCCESS_RETVAL)                                               \
+                                        {                                                                       \
+                                            LCD_DEBUG(LCD_DEBUG_ROW, LCD_DEBUG_COL, __FUNCTION__, __LINE__);    \
+                                            break;                                                              \
                                         }                                                    
 /**
  *@fn: memory_set

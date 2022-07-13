@@ -11,8 +11,11 @@
 #define LCD_NUM_OF_COL      13
 #endif
 
-#define LED_DEBUG           led_debug
-#define LCD_DEBUG           lcd_debug
+#define LED_DEBUG               led_debug
+#define LCD_DEBUG               lcd_debug
+
+#define LCD_DEBUG_ROW       1
+#define LCD_DEBUG_COL       0
 
 typedef enum
 {
@@ -44,8 +47,9 @@ void led_debug(enum_led_index_type enum_led_index, sint32_type sint32_retval, si
  * 
  * @param:  uint8_row_index:      Row index in which the user wants to display the error value. @note: This shall be less than @value: LCD_NUM_OF_ROW.
  * @param:  uint8_col_index:      Column Index in which the user wants to display the error value. @note: This shall be less than @value: LCD_NUM_OF_COL.
+ * @param:  puint8_error_string:  Pointer to the Error Message The user wants to display.
  * @param:  sint32_retval:        The variable the user wants to display on the LCD.
  * @return: None 
  */
-void lcd_debug(uint8_type uint8_row_index, uint8_type uint8_col_index, sint32_type sint32_retval);
+void lcd_debug(uint8_type uint8_row_index, uint8_type uint8_col_index, uint8_type* puint8_error_string ,sint32_type sint32_retval);
 #endif /*__DEBUG_H__*/
