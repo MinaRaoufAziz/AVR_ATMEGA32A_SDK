@@ -18,27 +18,52 @@
 #include <avr/interrupt.h>
 
 #ifndef F_CPU
-#define F_CPU                                   8000000UL
+#define F_CPU                                   16000000UL
 #endif
 
 
 #define MUL_FACTOR                              1000000         /*Factor to convert the F_CPU from Million to a single digit*/
 #define CONVERT_FROM_MILLI_TO_MICRO             1000
+#define CONVERT_FROM_NANO_TO_MILLI              1000
 #define COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER     256
 #define OVERFLOW_VALUE_IN_8_BIT_TIMER           255
 #define COUNTS_TILL_OVERFLOW_IN_16_BIT_TIMER    65536
 #define OVERFLOW_VALUE_IN_16_BIT_TIMER          65535
-#define ONE_MS                                  1
 #define NUMBER_OF_SUPPORTED_TIMERS              3
 #define FIND_ARR_LENGTH(ARR_NAME)               ((sizeof(ARR_NAME)) / sizeof(ARR_NAME[0]))
 #define MIN_DELAY_VALUE                         0
 #define MIN_DUTY_CYCLE_VALUE                    0
 #define MAX_DUTY_CYCLE_VALUE                    100
+
 #define I_BIT                                   7
+
 #define TOIE0_BIT                               0
 #define OCIE0_BIT                               1
-#define WGM01_BIT                               3
+
+#define TOIE1_BIT                               0
+#define OCIE1A_BIT                              1
+#define OCIE1B_BIT                              1
+#define TICIE1_BIT                              0
+
+#define TOIE2_BIT                               6
+#define OCIE2_BIT                               7
+
 #define WGM00_BIT                               6
+#define WGM01_BIT                               3
+
+#define WGM20_BIT                               6
+#define WGM21_BIT                               3
+
+#define TOV0_BIT                                0
+#define OCF0_BIT                                1
+#define TOV1_BIT                                2
+#define OCF1B_BIT                               3
+#define OCF1A_BIT                               4
+#define ICF1_BIT                                5
+#define TOV2_BIT                                6
+#define OCF2_BIT                                7
+
+#define DISABLE_TIMER_MASK                      0xF8
 
 
 /**
@@ -75,10 +100,10 @@ static struct_timer_database_type global_arr_str_timer_database[NUMBER_OF_SUPPOR
 
 static struct_timer_database_type   global_arr_str_timer_database[NUMBER_OF_SUPPORTED_TIMERS];
 static uint8_type                   global_bool_need_to_init_database   = TRUE;
-static volatile uint32_type         global_timer_0_int_count_for_one_ms = 0;
 static volatile uint32_type         global_timer_0_needed_interrupts    = 0;
 static volatile uint32_type         global_timer_1_needed_interrupts    = 0;
 static volatile uint32_type         global_timer_2_needed_interrupts    = 0;
+static enum_timer_index_type        global_timer_index_with_polling     = TIMER_INDEX_INVALID;
 
 static void init_timers_database(void);
 static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms);
@@ -87,15 +112,16 @@ static sint32_type delay_timer_2(uint32_type uint32_delay_in_ms);
 static sint32_type generate_pwm_timer_0(uint8_type uint8_duty_cycle);
 static sint32_type generate_pwm_timer_1(uint8_type uint8_duty_cycle);
 static sint32_type generate_pwm_timer_2(uint8_type uint8_duty_cycle);
+static void wait_for_timer_interrupt_flag(enum_timer_index_type enum_timer_index_with_polling);
 
 ISR(TIMER0_OVF_vect)
 {
-    static volatile uint32_type local_interrupt_counter = 0;
-    local_interrupt_counter++;
+    static volatile uint32_type uint32_local_interrupt_counter = 0;
+    uint32_local_interrupt_counter++;
 
-    if(local_interrupt_counter == global_timer_0_needed_interrupts)
+    if(uint32_local_interrupt_counter == global_timer_0_needed_interrupts)
     {
-        local_interrupt_counter     = 0;
+        uint32_local_interrupt_counter     = 0;
         if(global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db != NULL_PTR)
         {
             global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db(TIMER_INDEX_0);
@@ -105,15 +131,45 @@ ISR(TIMER0_OVF_vect)
 
 ISR(TIMER0_COMP_vect)
 {
-	static volatile uint32_type local_interrupt_counter = 0;
-	local_interrupt_counter++;
+	static volatile uint32_type uint32_local_interrupt_counter = 0;
+	uint32_local_interrupt_counter++;
 
-	if(local_interrupt_counter == global_timer_0_needed_interrupts)
+	if(uint32_local_interrupt_counter == global_timer_0_needed_interrupts)
 	{
-		local_interrupt_counter     = 0;
+		uint32_local_interrupt_counter     = 0;
 		if(global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db != NULL_PTR)
 		{
 			global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db(TIMER_INDEX_0);
+		}
+	}
+}
+
+ISR(TIMER2_OVF_vect)
+{
+	static volatile uint32_type uint32_local_interrupt_counter = 0;
+	uint32_local_interrupt_counter++;
+
+	if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+	{
+		uint32_local_interrupt_counter     = 0;
+		if(global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db != NULL_PTR)
+		{
+			global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+		}
+	}
+}
+
+ISR(TIMER2_COMP_vect)
+{
+	static volatile uint32_type uint32_local_interrupt_counter = 0;
+	uint32_local_interrupt_counter++;
+
+	if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+	{
+		uint32_local_interrupt_counter     = 0;
+		if(global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db != NULL_PTR)
+		{
+			global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
 		}
 	}
 }
@@ -134,13 +190,11 @@ static void init_timers_database(void)
 
 static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms)
 {
-
     sint32_type sint32_retval                               = SUCCESS_RETVAL;
     uint8_type  uint8_preload_value                         = 0;
     uint32_type uint32_number_of_interrupts                 = 0;
-    uint32_type uint32_time_to_overflow                     = 0;
-    fint32_type float_tick_time_in_ns                       = 0;
-    uint32_type uint32_tick_time_in_ns                       = 0;
+    uint32_type uint32_time_to_overflow_in_ms               = 0;
+    uint32_type uint32_tick_time_in_ns                      = 0;
     fint32_type float_exact_number_of_interrupts            = 0;
 
     if  (
@@ -148,14 +202,29 @@ static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms)
             ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_CTC)
         )
     {
-        /*Put Timer 0 Delay Logic Here*/
+        /*Calculate the Tick Time in Nano Seconds. In order to avoid losing fractions from the start of the calculations*/
         uint32_tick_time_in_ns = ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_prescalar_value_in_db) * MUL_FACTOR) / (F_CPU / CONVERT_FROM_MILLI_TO_MICRO);
-        uint32_time_to_overflow = uint32_tick_time_in_ns * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER / CONVERT_FROM_MILLI_TO_MICRO;
-        float_exact_number_of_interrupts = (uint32_delay_in_ms * CONVERT_FROM_MILLI_TO_MICRO) / uint32_time_to_overflow;
+
+        /*Calculate the time till overflow in Milli seconds*/
+        uint32_time_to_overflow_in_ms = ((uint32_tick_time_in_ns * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER) / CONVERT_FROM_NANO_TO_MILLI);
+        
+        /*Calculate the total number of Interrupts Needed.*/
+        float_exact_number_of_interrupts = (uint32_delay_in_ms * CONVERT_FROM_MILLI_TO_MICRO) / uint32_time_to_overflow_in_ms;
+        
+        /*Ceiling the Value of the needed interrupts. 
+        As if we needed 3.9 Interrupts. This means that we need 3 Interrupts from 0 to 255 and 1 interrupt with a preload value*/
         uint32_number_of_interrupts = (uint32_type) float_exact_number_of_interrupts + 1;
+
+        /*Getting the fraction in the needed value for interrupts*/
         float_exact_number_of_interrupts = float_exact_number_of_interrupts - uint32_number_of_interrupts;
+
+        /*Storing the needed interrupts count in a global variable that will be checked inside the interrupt.*/
         global_timer_0_needed_interrupts = uint32_number_of_interrupts;
+
+        /*Calculating the needed preload value to store in the Register.*/
         uint8_preload_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER);
+
+        /*Storing the Preload value in the corresponding register based on timer mode.*/
         if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_OVF)
         {
             REG_TCNT0           = uint8_preload_value;
@@ -164,7 +233,6 @@ static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms)
         {
             REG_OCR0           = uint8_preload_value;
         }
-
     }
     else
     {
@@ -175,11 +243,11 @@ static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms)
 
 static sint32_type delay_timer_1(uint32_type uint32_delay_in_ms)
 {
-    sint32_type sint32_retval = SUCCESS_RETVAL;
+    sint32_type sint32_retval                               = SUCCESS_RETVAL;
     uint16_type uint16_preload_value                        = 0;
     uint32_type uint32_number_of_interrupts                 = 0;
-    uint32_type uint32_time_to_overflow                     = 0;
-    fint32_type float_tick_time_in_us                       = 0;
+    uint32_type uint32_time_to_overflow_in_ms               = 0;
+    uint32_type uint32_tick_time_in_ns                      = 0;
     fint32_type float_exact_number_of_interrupts            = 0;
 
     if  (
@@ -187,19 +255,37 @@ static sint32_type delay_timer_1(uint32_type uint32_delay_in_ms)
             ((global_arr_str_timer_database[TIMER_INDEX_1].enum_timer_mode_in_db) == TIMER_MODE_CTC)
         )
     {
-        /*Put Timer 1 Delay Logic Here*/
-        float_tick_time_in_us = ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_prescalar_value_in_db) * MUL_FACTOR) / (F_CPU);
-        uint32_time_to_overflow = float_tick_time_in_us * COUNTS_TILL_OVERFLOW_IN_16_BIT_TIMER;
-        float_exact_number_of_interrupts = (CONVERT_FROM_MILLI_TO_MICRO * uint32_delay_in_ms) / COUNTS_TILL_OVERFLOW_IN_16_BIT_TIMER;
-        uint32_number_of_interrupts = (uint32_type) float_exact_number_of_interrupts;
-        float_exact_number_of_interrupts -= uint32_number_of_interrupts;
-        if(float_exact_number_of_interrupts > (fint32_type) 0.0)
+        /*Calculate the Tick Time in Nano Seconds. In order to avoid losing fractions from the start of the calculations*/
+        uint32_tick_time_in_ns = ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_prescalar_value_in_db) * MUL_FACTOR) / (F_CPU / CONVERT_FROM_MILLI_TO_MICRO);
+
+        /*Calculate the time till overflow in Milli seconds*/
+        uint32_time_to_overflow_in_ms = ((uint32_tick_time_in_ns * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER) / CONVERT_FROM_NANO_TO_MILLI);
+        
+        /*Calculate the total number of Interrupts Needed.*/
+        float_exact_number_of_interrupts = (uint32_delay_in_ms * CONVERT_FROM_MILLI_TO_MICRO) / uint32_time_to_overflow_in_ms;
+        
+        /*Ceiling the Value of the needed interrupts. 
+        As if we needed 3.9 Interrupts. This means that we need 3 Interrupts from 0 to 255 and 1 interrupt with a preload value*/
+        uint32_number_of_interrupts = (uint32_type) float_exact_number_of_interrupts + 1;
+
+        /*Getting the fraction in the needed value for interrupts*/
+        float_exact_number_of_interrupts = float_exact_number_of_interrupts - uint32_number_of_interrupts;
+
+        /*Storing the needed interrupts count in a global variable that will be checked inside the interrupt.*/
+        global_timer_2_needed_interrupts = uint32_number_of_interrupts;
+
+        /*Calculating the needed preload value to store in the Register.*/
+        uint16_preload_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER);
+
+        /*Storing the Preload value in the corresponding register based on timer mode.*/
+        if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_OVF)
         {
-            uint32_number_of_interrupts++;
+            REG_TCNT1L           = uint16_preload_value;
         }
-        global_timer_0_needed_interrupts = uint32_number_of_interrupts;
-        uint16_preload_value = OVERFLOW_VALUE_IN_16_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_16_BIT_TIMER);
-        REG_TCNT1L           = uint16_preload_value;
+        else if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_CTC)
+        {
+            REG_OCR1AL           = uint16_preload_value;
+        }
     }
     else
     {
@@ -210,11 +296,11 @@ static sint32_type delay_timer_1(uint32_type uint32_delay_in_ms)
 
 static sint32_type delay_timer_2(uint32_type uint32_delay_in_ms)
 {
-    sint32_type sint32_retval = SUCCESS_RETVAL;
+    sint32_type sint32_retval                               = SUCCESS_RETVAL;
     uint8_type  uint8_preload_value                         = 0;
     uint32_type uint32_number_of_interrupts                 = 0;
-    uint32_type uint32_time_to_overflow                     = 0;
-    fint32_type float_tick_time_in_us                       = 0;
+    uint32_type uint32_time_to_overflow_in_ms               = 0;
+    uint32_type uint32_tick_time_in_ns                      = 0;
     fint32_type float_exact_number_of_interrupts            = 0;
 
     if  (
@@ -222,19 +308,37 @@ static sint32_type delay_timer_2(uint32_type uint32_delay_in_ms)
             ((global_arr_str_timer_database[TIMER_INDEX_2].enum_timer_mode_in_db) == TIMER_MODE_CTC)
         )
     {
-        /*Put Timer 2 Delay Logic Here*/
-        float_tick_time_in_us = ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_prescalar_value_in_db) * MUL_FACTOR) / (F_CPU);
-        uint32_time_to_overflow = float_tick_time_in_us * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER;
-        float_exact_number_of_interrupts = (CONVERT_FROM_MILLI_TO_MICRO * uint32_delay_in_ms) / COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER;
-        uint32_number_of_interrupts = (uint32_type) float_exact_number_of_interrupts;
-        float_exact_number_of_interrupts -= uint32_number_of_interrupts;
-        if(float_exact_number_of_interrupts > (fint32_type) 0)
+        /*Calculate the Tick Time in Nano Seconds. In order to avoid losing fractions from the start of the calculations*/
+        uint32_tick_time_in_ns = ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_prescalar_value_in_db) * MUL_FACTOR) / (F_CPU / CONVERT_FROM_MILLI_TO_MICRO);
+
+        /*Calculate the time till overflow in Milli seconds*/
+        uint32_time_to_overflow_in_ms = ((uint32_tick_time_in_ns * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER) / CONVERT_FROM_NANO_TO_MILLI);
+        
+        /*Calculate the total number of Interrupts Needed.*/
+        float_exact_number_of_interrupts = (uint32_delay_in_ms * CONVERT_FROM_MILLI_TO_MICRO) / uint32_time_to_overflow_in_ms;
+        
+        /*Ceiling the Value of the needed interrupts. 
+        As if we needed 3.9 Interrupts. This means that we need 3 Interrupts from 0 to 255 and 1 interrupt with a preload value*/
+        uint32_number_of_interrupts = (uint32_type) float_exact_number_of_interrupts + 1;
+
+        /*Getting the fraction in the needed value for interrupts*/
+        float_exact_number_of_interrupts = float_exact_number_of_interrupts - uint32_number_of_interrupts;
+
+        /*Storing the needed interrupts count in a global variable that will be checked inside the interrupt.*/
+        global_timer_2_needed_interrupts = uint32_number_of_interrupts;
+
+        /*Calculating the needed preload value to store in the Register.*/
+        uint8_preload_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER);
+
+        /*Storing the Preload value in the corresponding register based on timer mode.*/
+        if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_OVF)
         {
-            uint32_number_of_interrupts++;
+            REG_TCNT2           = uint8_preload_value;
         }
-        global_timer_0_needed_interrupts = uint32_number_of_interrupts;
-        uint8_preload_value = float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER;
-        REG_TCNT2           = uint8_preload_value;
+        else if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_CTC)
+        {
+            REG_OCR2           = uint8_preload_value;
+        }
     }
     else
     {
@@ -259,6 +363,7 @@ static sint32_type generate_pwm_timer_0(uint8_type uint8_duty_cycle)
     }
     return sint32_retval;
 }
+
 static sint32_type generate_pwm_timer_1(uint8_type uint8_duty_cycle)
 {
     sint32_type sint32_retval = SUCCESS_RETVAL;
@@ -275,6 +380,7 @@ static sint32_type generate_pwm_timer_1(uint8_type uint8_duty_cycle)
     }
     return sint32_retval;
 }
+
 static sint32_type generate_pwm_timer_2(uint8_type uint8_duty_cycle)
 {
     sint32_type sint32_retval = SUCCESS_RETVAL;
@@ -290,6 +396,88 @@ static sint32_type generate_pwm_timer_2(uint8_type uint8_duty_cycle)
         sint32_retval = ERROR_UNSUPPORTED_FEATURE;
     }
     return sint32_retval;
+}
+
+static void wait_for_timer_interrupt_flag(enum_timer_index_type enum_timer_index_with_polling)
+{
+    static uint32_type uint32_local_interrupt_counter = 0;
+    uint8_type uint8_is_valid_timer_index = TRUE;
+    switch(enum_timer_index_with_polling)
+    {
+        case TIMER_INDEX_0:
+        case TIMER_INDEX_1:
+        case TIMER_INDEX_2:
+        {
+            break;
+        }
+        default:
+        {
+            uint8_is_valid_timer_index = FALSE;
+            break;
+        }
+    }
+    
+    if(uint8_is_valid_timer_index == TRUE)
+    {
+        if(global_arr_str_timer_database[enum_timer_index_with_polling].enum_timer_mode_in_db == TIMER_MODE_OVF)
+        {
+            if(enum_timer_index_with_polling == TIMER_INDEX_0)
+            {
+                while(GET_BIT(REG_TIFR, TOV0_BIT) == 1);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_timer_0_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db(TIMER_INDEX_0);
+                }
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_1)
+            {
+
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_2)
+            {
+                while(GET_BIT(REG_TIFR, TOV2_BIT) == 0);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+                }
+            }
+            else
+            {
+
+            }
+        }
+        else if(global_arr_str_timer_database[enum_timer_index_with_polling].enum_timer_mode_in_db == TIMER_MODE_CTC)
+        {
+            if(enum_timer_index_with_polling == TIMER_INDEX_0)
+            {
+                while(GET_BIT(REG_TIFR, OCF0_BIT) == 0);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+                }
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_1)
+            {
+
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_2)
+            {
+                while(GET_BIT(REG_TIFR, OCF2_BIT) == 0);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+                }
+            }
+            else
+            {
+
+            }
+        }
+    }
 }
 
 /**
@@ -338,7 +526,6 @@ sint32_type timer_init(const tstr_timer_config* const pstr_timer_config)
                     {
                         if((pstr_timer_config->enum_timer_interrupt_usage) == TIMER_USAGE_INTERRUPT)
                         {
-                            /*Put Timer 0 Interrupt Configurations here.*/
                             if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_OVF)
                             {
                                 /*Enable Global Interrupt*/
@@ -356,30 +543,27 @@ sint32_type timer_init(const tstr_timer_config* const pstr_timer_config)
                         }
                         else if((pstr_timer_config->enum_timer_interrupt_usage) == TIMER_USAGE_POLLING)
                         {
-                            /*Do Nothing.*/
+                            /*Do Nothing. Just save the timer index in the global to handle it in the timer dispatcher*/
+                            global_timer_index_with_polling = TIMER_INDEX_0;
                         }
 
                         if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_OVF)
                         {
-                            /*Put Timer 0 Overflow configurations here.*/
                             CLEAR_BIT(REG_TCCR0, WGM00_BIT);
                             CLEAR_BIT(REG_TCCR0, WGM01_BIT);
                         }
                         else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_CTC)
                         {
-                            /*Put Timer 0 Clear Timer on Compare Match configurations here.*/
                             CLEAR_BIT(REG_TCCR0, WGM00_BIT);
                             SET_BIT(REG_TCCR0, WGM01_BIT);
                         }
                         else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_PWM)
                         {
-                            /*Put Timer 0 Pulse Width Modulation configurations here.*/
                             SET_BIT(REG_TCCR0, WGM00_BIT);
                             SET_BIT(REG_TCCR0, WGM01_BIT);
                         }
                         else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_PHASE_PWM)
                         {
-                            /*Put Timer 0 Phase Correct Pulse Width Modulation configurations here.*/
                             SET_BIT(REG_TCCR0, WGM00_BIT);
                             CLEAR_BIT(REG_TCCR0, WGM01_BIT);
                         }
@@ -421,28 +605,46 @@ sint32_type timer_init(const tstr_timer_config* const pstr_timer_config)
                     {
                         if((pstr_timer_config->enum_timer_interrupt_usage) == TIMER_USAGE_INTERRUPT)
                         {
-                            /*Put Timer 2 Interrupt Configurations here.*/
+                            if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_OVF)
+                            {
+                                /*Enable Global Interrupt*/
+                                SET_BIT(REG_SREG, I_BIT);   
+                                /*Enable Peripheral Interrupt*/
+                                SET_BIT(REG_TIMSK, TOIE2_BIT);
+                            }
+                            else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_CTC)
+                            {
+                                /*Enable Global Interrupt*/
+                                SET_BIT(REG_SREG, I_BIT);   
+                                /*Enable Peripheral Interrupt*/
+                                SET_BIT(REG_TIMSK, OCIE2_BIT);   
+                            }
                         }
                         else if((pstr_timer_config->enum_timer_interrupt_usage) == TIMER_USAGE_POLLING)
                         {
-                            /*Do Nothing.*/
+                            /*Do Nothing. Just save the timer index in the global to handle it in the timer dispatcher*/
+                            global_timer_index_with_polling = TIMER_INDEX_2;
                         }
 
                         if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_OVF)
                         {
-                            /*Put Timer 2 Overflow configurations here.*/
+                            CLEAR_BIT(REG_TCCR2, WGM20_BIT);
+                            CLEAR_BIT(REG_TCCR2, WGM21_BIT);
                         }
                         else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_CTC)
                         {
-                            /*Put Timer 2 Clear Timer on Compare Match configurations here.*/
+                            CLEAR_BIT(REG_TCCR2, WGM20_BIT);
+                            SET_BIT(REG_TCCR2, WGM21_BIT);
                         }
                         else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_PWM)
                         {
-                            /*Put Timer 2 Pulse Width Modulation configurations here.*/
+                            SET_BIT(REG_TCCR2, WGM20_BIT);
+                            SET_BIT(REG_TCCR2, WGM21_BIT);
                         }
                         else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_PHASE_PWM)
                         {
-                            /*Put Timer 2 Fast Pulse Width Modulation configurations here.*/
+                            SET_BIT(REG_TCCR2, WGM20_BIT);
+                            CLEAR_BIT(REG_TCCR2, WGM21_BIT);
                         }
                         break;
                     }
@@ -601,6 +803,38 @@ sint32_type timer_enable(enum_timer_index_type enum_timer_index)
                     case TIMER_INDEX_2:
                     {
                         /*Put the Sequence of Enabling Timer 2 Here*/
+                        switch(global_arr_str_timer_database[enum_timer_index].enum_timer_prescalar_value_in_db)
+                        {
+                            case TIMER_NO_PRESCALAR:
+                            {
+                                REG_TCCR2 = REG_TCCR2 | 0x01;
+                                break;
+                            }
+                            case TIMER_8_PRESCALAR:
+                            {
+                                REG_TCCR2 = REG_TCCR2 | 0x02;
+                                break;
+                            }
+                            case TIMER_64_PRESCALAR:
+                            {
+                                REG_TCCR2 = REG_TCCR2 | 0x03;
+                                break;
+                            }
+                            case TIMER_256_PRESCALAR:
+                            {
+                                REG_TCCR2 = REG_TCCR2 | 0x04;
+                                break;
+                            }
+                            case TIMER_1024_PRESCALAR:
+                            {
+                                REG_TCCR2 = REG_TCCR2 | 0x05;
+                                break;
+                            }
+                            default:
+                            {
+                                break;
+                            }
+                        }
                         break;
                     }
                     default:
@@ -663,7 +897,7 @@ sint32_type timer_disable(enum_timer_index_type enum_timer_index)
                     case TIMER_INDEX_0:
                     {
                         /*Put the Sequence of Disabling Timer 0 Here*/
-                        REG_TCCR0 = REG_TCCR0 & 0xF8;
+                        REG_TCCR0 = REG_TCCR0 & DISABLE_TIMER_MASK;
                         break;
                     }
                     case TIMER_INDEX_1:
@@ -674,6 +908,7 @@ sint32_type timer_disable(enum_timer_index_type enum_timer_index)
                     case TIMER_INDEX_2:
                     {
                         /*Put the Sequence of Disabling Timer 2 Here*/
+                        REG_TCCR2 = REG_TCCR2 & DISABLE_TIMER_MASK;
                         break;
                     }
                     default:
@@ -738,17 +973,18 @@ sint32_type timer_delay(enum_timer_index_type enum_timer_index, uint32_type uint
                     case TIMER_INDEX_0:
                     {
                         timer_enable(TIMER_INDEX_0);
-                        // global_timer_0_needed_interrupts = uint32_delay_in_ms / CONVERT_FROM_MILLI_TO_MICRO;
                         sint32_retval = delay_timer_0(uint32_delay_in_ms);
                         break;
                     }
                     case TIMER_INDEX_1:
                     {
+						timer_enable(TIMER_INDEX_1);
                         sint32_retval = delay_timer_1(uint32_delay_in_ms);
                         break;
                     }
                     case TIMER_INDEX_2:
                     {
+                        timer_enable(TIMER_INDEX_2);
                         sint32_retval = delay_timer_2(uint32_delay_in_ms);
                         break;
                     }
@@ -839,5 +1075,5 @@ sint32_type	timer_generate_pwm(enum_timer_index_type enum_timer_index, uint8_typ
 
 void timer_dispatcher(void)
 {
-
+    wait_for_timer_interrupt_flag(global_timer_index_with_polling);
 }
