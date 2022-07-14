@@ -30,11 +30,19 @@ static const tstr_timer_config gstr_timer_0_config =	{
 
 static const tstr_timer_config gstr_timer_2_config =	{
 															.enum_timer_index				= TIMER_INDEX_2,
-															.enum_timer_interrupt_usage		= TIMER_USAGE_POLLING,
+															.enum_timer_interrupt_usage		= TIMER_USAGE_INTERRUPT,
 															.enum_timer_mode				= TIMER_MODE_CTC,
 															.enum_timer_prescalar_value		= TIMER_8_PRESCALAR,
 															.pointer_func_timer_callback	= generic_timer_callback,
 														};
+
+static const tstr_timer_config gstr_timer_0_pwm_config =	{
+																.enum_timer_index				= TIMER_INDEX_0,
+																.enum_timer_interrupt_usage		= TIMER_USAGE_INTERRUPT,
+																.enum_timer_mode				= TIMER_MODE_PWM,
+																.enum_timer_prescalar_value		= TIMER_8_PRESCALAR,
+																.pointer_func_timer_callback	= generic_timer_callback,
+															};
 
 void generic_timer_callback(enum_timer_index_type enum_timer_index)
 {
@@ -43,7 +51,7 @@ void generic_timer_callback(enum_timer_index_type enum_timer_index)
 		case TIMER_INDEX_0:
 		{
 			/*Toggle LED 0*/
-			gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_C, 2);
+			//gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_C, 2);
 			break;
 		}
 		case TIMER_INDEX_1:
@@ -54,7 +62,7 @@ void generic_timer_callback(enum_timer_index_type enum_timer_index)
 		case TIMER_INDEX_2:
 		{
 			/*Toggle LED 2*/
-			gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_D, 3);
+			//gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_D, 3);
 			break;
 		}
 		default:
@@ -81,11 +89,16 @@ int main(void)
 	//lcd_goto_row_column(1,0);
 	//lcd_write_integral_data(LCD_INTEGRAL_DECIMAL, __LINE__);
 	
-	timer_init(&gstr_timer_2_config);
-	timer_init(&gstr_timer_0_config);
+	//gpio_mainpulate_pin(ENU_OPERATION_SET, ENU_PORT_D, 3);
+	//timer_init(&gstr_timer_2_config);
+	timer_init(&gstr_timer_0_pwm_config);
+	gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_D, 3);
+	//timer_init(&gstr_timer_0_config);
 	
-	sint32_retval = timer_delay(TIMER_INDEX_0, 5000);
-	sint32_retval = timer_delay(TIMER_INDEX_2, 2000);
+	sint32_retval = timer_generate_pwm(TIMER_INDEX_0, 5);
+
+	//sint32_retval = timer_delay(TIMER_INDEX_0, 5000);
+	//sint32_retval = timer_delay(TIMER_INDEX_2, 2000);
 
 
 	//lcd_write_integral_data(LCD_INTEGRAL_DECIMAL, F_CPU);
@@ -94,7 +107,6 @@ int main(void)
     /* Replace with your application code */
     while (1) 
     {
-		timer_dispatcher();
 		if(GET_BIT(REG_PINB, 0) == 1)
 		{
 			gpio_mainpulate_pin(ENU_OPERATION_SET, ENU_PORT_A, 3);

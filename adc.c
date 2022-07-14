@@ -151,7 +151,7 @@ sint32_type adc_read_value(uint16_type* pu16_adc_value)
             while(GET_BIT(REG_ADCSRA, ADIF) == 0);
 
             /*Store The Value inside the passed variable.*/
-            *pu16_adc_value = REG_ADCL;
+            *pu16_adc_value = REG_ADC;
 			
         }
         else

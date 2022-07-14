@@ -99,27 +99,29 @@ static struct_timer_database_type global_arr_str_timer_database[NUMBER_OF_SUPPOR
 #endif
 
 static struct_timer_database_type   global_arr_str_timer_database[NUMBER_OF_SUPPORTED_TIMERS];
-static uint8_type                   global_bool_need_to_init_database   = TRUE;
-static volatile uint32_type         global_timer_0_needed_interrupts    = 0;
-static volatile uint32_type         global_timer_1_needed_interrupts    = 0;
-static volatile uint32_type         global_timer_2_needed_interrupts    = 0;
-static enum_timer_index_type        global_timer_index_with_polling     = TIMER_INDEX_INVALID;
+static uint8_type                   global_bool_need_to_init_database           = TRUE;
+static volatile uint32_type         global_uint32_timer_0_needed_interrupts     = 0;
+static volatile uint32_type         global_uint32_timer_1_needed_interrupts     = 0;
+static volatile uint32_type         global_uint32_timer_2_needed_interrupts     = 0;
+static volatile uint32_type         global_uint32_ton_value                     = 0;
+static volatile uint32_type         global_uint32_toff_value                    = 0;
+static enum_timer_index_type        global_enum_timer_index_with_polling        = TIMER_INDEX_INVALID;
 
-static void init_timers_database(void);
-static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms);
-static sint32_type delay_timer_1(uint32_type uint32_delay_in_ms);
-static sint32_type delay_timer_2(uint32_type uint32_delay_in_ms);
-static sint32_type generate_pwm_timer_0(uint8_type uint8_duty_cycle);
-static sint32_type generate_pwm_timer_1(uint8_type uint8_duty_cycle);
-static sint32_type generate_pwm_timer_2(uint8_type uint8_duty_cycle);
-static void wait_for_timer_interrupt_flag(enum_timer_index_type enum_timer_index_with_polling);
+static void         init_timers_database(void);
+static sint32_type  delay_timer_0(uint32_type uint32_delay_in_ms);
+static sint32_type  delay_timer_1(uint32_type uint32_delay_in_ms);
+static sint32_type  delay_timer_2(uint32_type uint32_delay_in_ms);
+static sint32_type  generate_pwm_timer_0(uint8_type uint8_duty_cycle);
+static sint32_type  generate_pwm_timer_1(uint8_type uint8_duty_cycle);
+static sint32_type  generate_pwm_timer_2(uint8_type uint8_duty_cycle);
+static void         wait_for_timer_interrupt_flag(enum_timer_index_type enum_timer_index_with_polling);
 
 ISR(TIMER0_OVF_vect)
 {
     static volatile uint32_type uint32_local_interrupt_counter = 0;
     uint32_local_interrupt_counter++;
 
-    if(uint32_local_interrupt_counter == global_timer_0_needed_interrupts)
+    if(uint32_local_interrupt_counter == global_uint32_timer_0_needed_interrupts)
     {
         uint32_local_interrupt_counter     = 0;
         if(global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db != NULL_PTR)
@@ -129,12 +131,38 @@ ISR(TIMER0_OVF_vect)
     }
 }
 
+#if defined (USE_CTC_FOR_PWM)
+ISR(TIMER0_COMP_vect)
+{
+	static volatile uint32_type uint32_local_interrupt_counter = 0;
+    if(uint32_local_interrupt_counter == 0)
+    {
+        uint32_local_interrupt_counter++;
+		//lcd_write_integral_data(LCD_INTEGRAL_DECIMAL, REG_OCR0);
+        gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_C, 2);
+        REG_OCR0 = global_uint32_toff_value;
+        /*Raise The Callback To The Upper Layer*/
+		//gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_D, 3);
+    }
+    else if(uint32_local_interrupt_counter == 1)
+    {
+        uint32_local_interrupt_counter = 0;
+		//lcd_goto_row_column(1,0);
+		//lcd_write_integral_data(LCD_INTEGRAL_DECIMAL, REG_OCR0);
+         gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_C, 2);
+        REG_OCR0 = global_uint32_ton_value;
+        /*Raise The Callback To The Upper Layer*/
+        //gpio_mainpulate_pin(ENU_OPERATION_TOGGLE, ENU_PORT_D, 3);
+    }
+	
+}
+#else
 ISR(TIMER0_COMP_vect)
 {
 	static volatile uint32_type uint32_local_interrupt_counter = 0;
 	uint32_local_interrupt_counter++;
 
-	if(uint32_local_interrupt_counter == global_timer_0_needed_interrupts)
+	if(uint32_local_interrupt_counter == global_uint32_timer_0_needed_interrupts)
 	{
 		uint32_local_interrupt_counter     = 0;
 		if(global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db != NULL_PTR)
@@ -143,13 +171,15 @@ ISR(TIMER0_COMP_vect)
 		}
 	}
 }
+#endif
+
 
 ISR(TIMER2_OVF_vect)
 {
 	static volatile uint32_type uint32_local_interrupt_counter = 0;
 	uint32_local_interrupt_counter++;
 
-	if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+	if(uint32_local_interrupt_counter == global_uint32_timer_2_needed_interrupts)
 	{
 		uint32_local_interrupt_counter     = 0;
 		if(global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db != NULL_PTR)
@@ -159,12 +189,13 @@ ISR(TIMER2_OVF_vect)
 	}
 }
 
+#if defined (USE_CTC_FOR_PWM)
 ISR(TIMER2_COMP_vect)
 {
 	static volatile uint32_type uint32_local_interrupt_counter = 0;
 	uint32_local_interrupt_counter++;
 
-	if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
+	if(uint32_local_interrupt_counter == global_uint32_timer_2_needed_interrupts)
 	{
 		uint32_local_interrupt_counter     = 0;
 		if(global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db != NULL_PTR)
@@ -173,6 +204,23 @@ ISR(TIMER2_COMP_vect)
 		}
 	}
 }
+#else
+ISR(TIMER2_COMP_vect)
+{
+	static volatile uint32_type uint32_local_interrupt_counter = 0;
+	uint32_local_interrupt_counter++;
+
+	if(uint32_local_interrupt_counter == global_uint32_timer_2_needed_interrupts)
+	{
+		uint32_local_interrupt_counter     = 0;
+		if(global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db != NULL_PTR)
+		{
+			global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+		}
+	}
+}
+#endif
+
 
 static void init_timers_database(void)
 {
@@ -219,7 +267,7 @@ static sint32_type delay_timer_0(uint32_type uint32_delay_in_ms)
         float_exact_number_of_interrupts = float_exact_number_of_interrupts - uint32_number_of_interrupts;
 
         /*Storing the needed interrupts count in a global variable that will be checked inside the interrupt.*/
-        global_timer_0_needed_interrupts = uint32_number_of_interrupts;
+        global_uint32_timer_0_needed_interrupts = uint32_number_of_interrupts;
 
         /*Calculating the needed preload value to store in the Register.*/
         uint8_preload_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER);
@@ -272,7 +320,7 @@ static sint32_type delay_timer_1(uint32_type uint32_delay_in_ms)
         float_exact_number_of_interrupts = float_exact_number_of_interrupts - uint32_number_of_interrupts;
 
         /*Storing the needed interrupts count in a global variable that will be checked inside the interrupt.*/
-        global_timer_2_needed_interrupts = uint32_number_of_interrupts;
+        global_uint32_timer_2_needed_interrupts = uint32_number_of_interrupts;
 
         /*Calculating the needed preload value to store in the Register.*/
         uint16_preload_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER);
@@ -280,11 +328,11 @@ static sint32_type delay_timer_1(uint32_type uint32_delay_in_ms)
         /*Storing the Preload value in the corresponding register based on timer mode.*/
         if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_OVF)
         {
-            REG_TCNT1L           = uint16_preload_value;
+            REG_TCNT1           = uint16_preload_value;
         }
         else if((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_CTC)
         {
-            REG_OCR1AL           = uint16_preload_value;
+            REG_OCR1A           = uint16_preload_value;
         }
     }
     else
@@ -325,7 +373,7 @@ static sint32_type delay_timer_2(uint32_type uint32_delay_in_ms)
         float_exact_number_of_interrupts = float_exact_number_of_interrupts - uint32_number_of_interrupts;
 
         /*Storing the needed interrupts count in a global variable that will be checked inside the interrupt.*/
-        global_timer_2_needed_interrupts = uint32_number_of_interrupts;
+        global_uint32_timer_2_needed_interrupts = uint32_number_of_interrupts;
 
         /*Calculating the needed preload value to store in the Register.*/
         uint8_preload_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - (float_exact_number_of_interrupts * COUNTS_TILL_OVERFLOW_IN_8_BIT_TIMER);
@@ -351,11 +399,17 @@ static sint32_type generate_pwm_timer_0(uint8_type uint8_duty_cycle)
 {
     sint32_type sint32_retval = SUCCESS_RETVAL;
     if  (
-            ((global_arr_str_timer_database[TIMER_INDEX_2].enum_timer_mode_in_db) == TIMER_MODE_PWM) ||
-            ((global_arr_str_timer_database[TIMER_INDEX_2].enum_timer_mode_in_db) == TIMER_MODE_PHASE_PWM)
+            ((global_arr_str_timer_database[TIMER_INDEX_0].enum_timer_mode_in_db) == TIMER_MODE_PWM)
         )
     {
         /*Put Timer 0 PWM Generation Logic Here*/
+        global_uint32_ton_value = (uint8_duty_cycle * OVERFLOW_VALUE_IN_8_BIT_TIMER) / 100;
+        //lcd_write_integral_data(LCD_INTEGRAL_DECIMAL, global_uint32_ton_value);
+        global_uint32_toff_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - global_uint32_ton_value;
+        //lcd_goto_row_column(1,0);
+		//lcd_write_integral_data(LCD_INTEGRAL_DECIMAL, global_uint32_toff_value);
+		timer_enable(TIMER_INDEX_0);
+        REG_OCR0 = global_uint32_ton_value;
     }
     else
     {
@@ -368,11 +422,12 @@ static sint32_type generate_pwm_timer_1(uint8_type uint8_duty_cycle)
 {
     sint32_type sint32_retval = SUCCESS_RETVAL;
     if  (
-            ((global_arr_str_timer_database[TIMER_INDEX_2].enum_timer_mode_in_db) == TIMER_MODE_PWM) ||
-            ((global_arr_str_timer_database[TIMER_INDEX_2].enum_timer_mode_in_db) == TIMER_MODE_PHASE_PWM)
+            ((global_arr_str_timer_database[TIMER_INDEX_1].enum_timer_mode_in_db) == TIMER_MODE_PWM)
         )
     {
         /*Put Timer 1 PWM Generation Logic Here*/
+        global_uint32_ton_value = (uint8_duty_cycle * OVERFLOW_VALUE_IN_16_BIT_TIMER) / 100;
+        global_uint32_toff_value = OVERFLOW_VALUE_IN_16_BIT_TIMER - global_uint32_ton_value;
     }
     else
     {
@@ -390,94 +445,14 @@ static sint32_type generate_pwm_timer_2(uint8_type uint8_duty_cycle)
         )
     {
         /*Put Timer 2 PWM Generation Logic Here*/
+        global_uint32_ton_value = (uint8_duty_cycle * OVERFLOW_VALUE_IN_8_BIT_TIMER) / 100;
+        global_uint32_toff_value = OVERFLOW_VALUE_IN_8_BIT_TIMER - global_uint32_ton_value;
     }
     else
     {
         sint32_retval = ERROR_UNSUPPORTED_FEATURE;
     }
     return sint32_retval;
-}
-
-static void wait_for_timer_interrupt_flag(enum_timer_index_type enum_timer_index_with_polling)
-{
-    static uint32_type uint32_local_interrupt_counter = 0;
-    uint8_type uint8_is_valid_timer_index = TRUE;
-    switch(enum_timer_index_with_polling)
-    {
-        case TIMER_INDEX_0:
-        case TIMER_INDEX_1:
-        case TIMER_INDEX_2:
-        {
-            break;
-        }
-        default:
-        {
-            uint8_is_valid_timer_index = FALSE;
-            break;
-        }
-    }
-    
-    if(uint8_is_valid_timer_index == TRUE)
-    {
-        if(global_arr_str_timer_database[enum_timer_index_with_polling].enum_timer_mode_in_db == TIMER_MODE_OVF)
-        {
-            if(enum_timer_index_with_polling == TIMER_INDEX_0)
-            {
-                while(GET_BIT(REG_TIFR, TOV0_BIT) == 1);
-                uint32_local_interrupt_counter++;
-                if(uint32_local_interrupt_counter == global_timer_0_needed_interrupts)
-                {
-                    global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db(TIMER_INDEX_0);
-                }
-            }
-            else if(enum_timer_index_with_polling == TIMER_INDEX_1)
-            {
-
-            }
-            else if(enum_timer_index_with_polling == TIMER_INDEX_2)
-            {
-                while(GET_BIT(REG_TIFR, TOV2_BIT) == 0);
-                uint32_local_interrupt_counter++;
-                if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
-                {
-                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
-                }
-            }
-            else
-            {
-
-            }
-        }
-        else if(global_arr_str_timer_database[enum_timer_index_with_polling].enum_timer_mode_in_db == TIMER_MODE_CTC)
-        {
-            if(enum_timer_index_with_polling == TIMER_INDEX_0)
-            {
-                while(GET_BIT(REG_TIFR, OCF0_BIT) == 0);
-                uint32_local_interrupt_counter++;
-                if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
-                {
-                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
-                }
-            }
-            else if(enum_timer_index_with_polling == TIMER_INDEX_1)
-            {
-
-            }
-            else if(enum_timer_index_with_polling == TIMER_INDEX_2)
-            {
-                while(GET_BIT(REG_TIFR, OCF2_BIT) == 0);
-                uint32_local_interrupt_counter++;
-                if(uint32_local_interrupt_counter == global_timer_2_needed_interrupts)
-                {
-                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
-                }
-            }
-            else
-            {
-
-            }
-        }
-    }
 }
 
 /**
@@ -533,7 +508,7 @@ sint32_type timer_init(const tstr_timer_config* const pstr_timer_config)
                                 /*Enable Peripheral Interrupt*/
                                 SET_BIT(REG_TIMSK, TOIE0_BIT);
                             }
-                            else if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_CTC)
+                            else
                             {
                                 /*Enable Global Interrupt*/
                                 SET_BIT(REG_SREG, I_BIT);   
@@ -544,7 +519,7 @@ sint32_type timer_init(const tstr_timer_config* const pstr_timer_config)
                         else if((pstr_timer_config->enum_timer_interrupt_usage) == TIMER_USAGE_POLLING)
                         {
                             /*Do Nothing. Just save the timer index in the global to handle it in the timer dispatcher*/
-                            global_timer_index_with_polling = TIMER_INDEX_0;
+                            global_enum_timer_index_with_polling = TIMER_INDEX_0;
                         }
 
                         if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_OVF)
@@ -623,7 +598,7 @@ sint32_type timer_init(const tstr_timer_config* const pstr_timer_config)
                         else if((pstr_timer_config->enum_timer_interrupt_usage) == TIMER_USAGE_POLLING)
                         {
                             /*Do Nothing. Just save the timer index in the global to handle it in the timer dispatcher*/
-                            global_timer_index_with_polling = TIMER_INDEX_2;
+                            global_enum_timer_index_with_polling = TIMER_INDEX_2;
                         }
 
                         if((pstr_timer_config->enum_timer_mode) == TIMER_MODE_OVF)
@@ -1034,7 +1009,7 @@ sint32_type	timer_generate_pwm(enum_timer_index_type enum_timer_index, uint8_typ
         }
         else
         {
-            if((global_arr_str_timer_database[enum_timer_index].uint8_is_timer_enabled_in_db) == TRUE)
+            if((global_arr_str_timer_database[enum_timer_index].uint8_is_timer_enabled_in_db) == FALSE)
             {
                 switch(enum_timer_index)
                 {
@@ -1045,11 +1020,13 @@ sint32_type	timer_generate_pwm(enum_timer_index_type enum_timer_index, uint8_typ
                     }
                     case TIMER_INDEX_1:
                     {
+                        timer_enable(TIMER_INDEX_1);
                         sint32_retval = generate_pwm_timer_1(uint8_duty_cycle);
                         break;
                     }
                     case TIMER_INDEX_2:
                     {
+                        timer_enable(TIMER_INDEX_2);
                         sint32_retval = generate_pwm_timer_2(uint8_duty_cycle);
                         break;
                     }
@@ -1073,7 +1050,90 @@ sint32_type	timer_generate_pwm(enum_timer_index_type enum_timer_index, uint8_typ
     return sint32_retval;
 }
 
+#if 0
 void timer_dispatcher(void)
 {
-    wait_for_timer_interrupt_flag(global_timer_index_with_polling);
+    wait_for_timer_interrupt_flag(global_enum_timer_index_with_polling);
 }
+static void wait_for_timer_interrupt_flag(enum_timer_index_type enum_timer_index_with_polling)
+{
+    static uint32_type uint32_local_interrupt_counter = 0;
+    uint8_type uint8_is_valid_timer_index = TRUE;
+    switch(enum_timer_index_with_polling)
+    {
+        case TIMER_INDEX_0:
+        case TIMER_INDEX_1:
+        case TIMER_INDEX_2:
+        {
+            break;
+        }
+        default:
+        {
+            uint8_is_valid_timer_index = FALSE;
+            break;
+        }
+    }
+    
+    if(uint8_is_valid_timer_index == TRUE)
+    {
+        if(global_arr_str_timer_database[enum_timer_index_with_polling].enum_timer_mode_in_db == TIMER_MODE_OVF)
+        {
+            if(enum_timer_index_with_polling == TIMER_INDEX_0)
+            {
+                while(GET_BIT(REG_TIFR, TOV0_BIT) == 1);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_uint32_timer_0_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_0].pointer_func_timer_callback_in_db(TIMER_INDEX_0);
+                }
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_1)
+            {
+
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_2)
+            {
+                while(GET_BIT(REG_TIFR, TOV2_BIT) == 0);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_uint32_timer_2_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+                }
+            }
+            else
+            {
+
+            }
+        }
+        else if(global_arr_str_timer_database[enum_timer_index_with_polling].enum_timer_mode_in_db == TIMER_MODE_CTC)
+        {
+            if(enum_timer_index_with_polling == TIMER_INDEX_0)
+            {
+                while(GET_BIT(REG_TIFR, OCF0_BIT) == 0);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_uint32_timer_2_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+                }
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_1)
+            {
+
+            }
+            else if(enum_timer_index_with_polling == TIMER_INDEX_2)
+            {
+                while(GET_BIT(REG_TIFR, OCF2_BIT) == 0);
+                uint32_local_interrupt_counter++;
+                if(uint32_local_interrupt_counter == global_uint32_timer_2_needed_interrupts)
+                {
+                    global_arr_str_timer_database[TIMER_INDEX_2].pointer_func_timer_callback_in_db(TIMER_INDEX_2);
+                }
+            }
+            else
+            {
+
+            }
+        }
+    }
+}
+#endif

@@ -10,5 +10,8 @@
 #define ERROR_MODULE_NOT_INITAILIZED                -4
 #define ERROR_MODULE_ALREADY_INITAILIZED            -5
 #define ERROR_UNSUPPORTED_FEATURE                   -6
+#define ERROR_MODULE_BUSY                           -7
+
+#define UART_ERROR_BASE                             -100
 
 #endif  /*__ERRORS_H__*/

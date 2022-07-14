@@ -156,10 +156,12 @@ sint32_type timer_delay(enum_timer_index_type enum_timer_index, uint32_type uint
  */
 sint32_type	timer_generate_pwm(enum_timer_index_type enum_timer_index, uint8_type uint8_duty_cycle);
 
+#if (0)
 /**
  * @brief:		Function that is used to Handle all the timer events in the main loop
  * @return 		None
  */
 void timer_dispatcher(void);
+#endif
 
 #endif 	/*__TIMERS_H__*/
